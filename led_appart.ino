@@ -1,67 +1,144 @@
+#include <Arduino.h>
 #include <IRremote.hpp>
 
-struct { //Struct pour l'address et commande reçu
+#include "Leds.h"
+
+#define INFO_SERIAL Serial
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+struct LedCommandStr{  //Les commandes pour le ruban
+  bool power;
+
+  uint8_t mode;
+  uint8_t r, g, b;   //Red Blue Green
+  float brightness;  //From 0 to 1 (.1 inc/dec)
+
+};
+
+LedCommandStr LedCommand = {0, 0, 0, 0, 0, 0}; // Struct with the default config
+LedCommandStr LedCommand_recv;                 //Duplicate struct for the 2nd thread
+
+TaskHandle_t Leds_thread; // Thread that will drive the leds
+QueueHandle_t Command_queue; //queue that will have the struct LedCommandStr
+
+///////////////////////////////////////////////////////////////////////////////////////////Telecommande
+#include "telec_cst.h"
+
+struct {  //Struct pour l'address et commande reçu
   uint16_t address;
-  uint_8_t command;
-}telec_recu;
+  uint8_t command;
+} telec_recu;
 
-const struct { //Struc pour la telec IDual, comprenant toutes les touches + addr
-  uint16_t addr = 0xFE02;
+void Telec_init(int rx_pin) {
+  IrReceiver.begin(rx_pin);  // Start the receiver
+}
 
-  uint8_t on = 0x01;
-  uint8_t off = 0x02;
+bool valid_data;//Bool to know if the data received is valid
+bool Telec_process(struct LedCommandStr* ptr) {
+  valid_data = false;
+  if (IrReceiver.decode()) {                                                           //TODO: implement reapeat
+    telec_recu.address = (IrReceiver.decodedIRData.decodedRawData & 0xFFFF);          // NEC: 00          2E        FF02
+    telec_recu.command = (IrReceiver.decodedIRData.decodedRawData & 0xFF0000) >> 16;  //      des trcus   commande  adresss
 
-  uint8_t minus = 0x10;
-  uint8_t plus = 0x09;
+    if (telec_recu.address == IDual_addr) {
+      switch (telec_recu.command) {
+        case IDual_on:
+          ptr->power = 1;
+          break;
+        case IDual_off:
+          ptr->power = 0;
+          break;
+        case IDual_plus:
+          ptr->brightness = (ptr->brightness >= 0.9) ? 1.0 : (ptr->brightness + 0.1);
+          break;
+        case IDual_minus:
+          ptr->brightness = (ptr->brightness <= 0.10) ? 0.0 : (ptr->brightness - 0.1);
+          break;
+        default:
+          ptr->mode = telec_recu.command;  //  All special cmds are out so it can only be candle light sun cold night zen
+          break;
+      }
+      valid_data = true;
+    } else if (telec_recu.address == Keyes_addr) {
+      Serial.println("ok");  //TODO
+      valid_data = true;
+    }
 
-  uint8_t candle = 0x11;
-  uint8_t light = 0x8;
-  uint8_t sun = 0x0A;
-  uint8_t cold = 0x03;
-  uint8_t night = 0x12;
-  uint8_t zen = 0x04;
-
-}IDual;
-
-const struct { //Struc pour la telec IDual, comprenant toutes les touches + addr
-  uint16_t addr = 0xFF00;
-
-  uint8_t asterix = 0x42;
-  uint8_t hashtag = 0x4A;
-
-  uint8_t up = 0x46;
-  uint8_t down = 0x15;
-  uint8_t right = 0x43;
-  uint8_t left = 0x44;
-  uint8_t ok = 0x40;
-
-  uint8_t nul = 0x52;
-  uint8_t een = 0x16;
-  uint8_t twee = 0x19;
-  uint8_t drie = 0x0D;
-  uint8_t vier = 0x0C;
-  uint8_t vijf = 0x18;
-  uint8_t zes = 0x5E;
-  uint8_t zeven = 0x08;
-  uint8_t acht = 0x1C;
-  uint8_t negen = 0x5A;
-
-}Keyes;
-
-
-void setup(){
-  Serial.begin(9600);
-  IrReceiver.begin(25, true, 33); // Start the receiver
+    IrReceiver.resume();  // Enable receiving of the next value
+  }
+  return valid_data;//Return at the end after the IR resumed!
 }
 
 void loop() {
-  if (IrReceiver.decode()) {
-      telec_recu.address = (IrReceiver.decodedIRData.decodedRawData & 0xFFFF);      // NEC: 00          2E        FF02
-      telec_recu.command = (IrReceiver.decodedIRData.decodedRawData& 0xFF0000)>>16; //      des trcus   commande  adresss
+    // Decode entering data and send it to the queue
+    if (Telec_process(&LedCommand)) {
+        INFO_SERIAL.print("Received valid data from IR remote! Sending to queue");
+        xQueueSend(Command_queue, &LedCommand, portMAX_DELAY);
+    }
+}
 
-      Serial.print(telec_recu.address, HEX);
-      Serial.print("    ");
-      Serial.println(telec_recu.command, HEX);
-    IrReceiver.resume(); // Enable receiving of the next value
-  }
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void setup() {
+    Serial.begin(115200);
+
+    INFO_SERIAL.println(F("Initializing IR Module..."));
+    Telec_init(25); // Init the IR module at pin 25
+
+    INFO_SERIAL.println(F("Creating Queue"));
+    Command_queue = xQueueCreate(1, sizeof(LedCommandStr)); // Create a "Queue" with only 1 possible value
+
+    if (Command_queue == NULL){
+        INFO_SERIAL.println(F("Error creating the queue, reseting in 1 sec"));
+        delay(1000);
+        ESP.restart();
+    }
+
+    INFO_SERIAL.println(F("Creating Thread"));
+    xTaskCreatePinnedToCore(Leds_loop,     /* Task function. */
+                            "Leds_thread", /* name of task. */
+                            10000,         /* Stack size of task */
+                            NULL,          /* parameter of the task */
+                            1,             /* priority of the task */
+                            &Leds_thread,  /* Task handle to keep track of created task */
+                            0);            /* pin task to core 0 */
+
+    INFO_SERIAL.println(F("Setup Done!"));
+}
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void Leds_loop(void *parameter) {
+    INFO_SERIAL.print(F("Thread Leds loop started on core:"));
+    INFO_SERIAL.println(xPortGetCoreID());
+    bool previous_state = false;
+
+    for (;;) {
+      if (xQueueReceive( Command_queue, &LedCommand_recv, 0 ) == pdTRUE){
+        INFO_SERIAL.print(F("Received from queue"));
+
+        if(LedCommand_recv.power && !previous_state){//If we have received a power on and the strip was off then light it
+          previous_state = true;
+          random_on(50);
+        }else if(!LedCommand_recv.power && previous_state){
+          previous_state = false;
+          random_off(50);
+        }
+      }
+      if(LedCommand_recv.power){//Drive only the leds if we want them on
+        switch (LedCommand_recv.mode){
+        case M_zen:
+          setColor(255,0,0);
+          break;
+        case M_candle:
+          rainbow();
+          break;
+        
+        default:
+          setColor(0,255,0);
+          break;
+        }
+      }
+
+    }
 }
