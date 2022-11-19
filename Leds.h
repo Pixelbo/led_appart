@@ -9,11 +9,14 @@
 #define PIXEL_PIN 23
 #define PIXEL_COUNT 50
 
+
 #define VAGUE_LENGHT 7
 const uint8_t vague_r[VAGUE_LENGHT] = { 250, 200, 150, 0, 150, 200, 250 };
 
 //Leds function
 boolean arrayIncludeElement(int array[], int element);
+
+void setBrightness(uint8_t brightness);
 
 uint32_t Wheel(byte WheelPos);
 
@@ -33,5 +36,7 @@ void fill_middle(int r, int g, int b, int delai);
 void fill_extremity(int r, int g, int b, int delai);
 void circus(int r1, int g1, int b1, int r2, int g2, int b2, int delai);
 
-void rainbow();
+void rainbow(int delai);
+
+void setKelvin(int kelvin, int dispersion);
 #endif

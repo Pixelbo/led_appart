@@ -3,12 +3,16 @@
 //Declare the leds
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_RGB + NEO_KHZ800);
 
-
 boolean arrayIncludeElement(int array[], int element) {
   if (array[element] == 1) {
     return true;
   }
   return false;
+}
+
+void setBrightness(uint8_t brightness){
+  strip.setBrightness(brightness);
+  strip.show();
 }
 
 uint32_t Wheel(byte WheelPos) {
@@ -23,7 +27,6 @@ uint32_t Wheel(byte WheelPos) {
   WheelPos -= 170;
   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
-
 
 void off_start(int delai) {
   for (int i = 0; i <= PIXEL_COUNT - 1; i++) {
@@ -155,12 +158,10 @@ void random_on(int delai) {
   for (int i = 0; i < PIXEL_COUNT; i++) {
     while (arrayIncludeElement(rand_, randnum)) randnum = random(0, PIXEL_COUNT);
     rand_[randnum] = 1;
-    Serial.println(i);
     strip.setPixelColor(randnum, random(0, 255), random(0, 255), random(0, 255));
     strip.show();
     delay(delai);
   }
-  Serial.println("exit");
 }
 
 void random_off(int delai) {
@@ -178,7 +179,7 @@ void random_off(int delai) {
 }
 
 int w;
-void rainbow() {
+void rainbow(int delai) {
   if (w == 255) {
     w = 0;
   }
@@ -187,12 +188,68 @@ void rainbow() {
   }
   strip.show();
   w++;
-  delay(2);
+  delay(delai);
 }
 
 void setColor(int r, int g, int b) {
   for (int o = 0; o < PIXEL_COUNT; o++) {
     strip.setPixelColor(o, r, g, b);
+  }
+  strip.show();
+}
+
+void setKelvin(int kelvin, int dispersion){
+  
+
+  float red[3] = {0,0,0};
+  float green[3] = {0,0,0};
+  float blue[3] = {0,0,0};
+
+  //Calc rgb based on temp
+  //3 times:
+  //One with kelvin minus dispersion
+  //One with only kelvin
+  //One with kelvin plus dispersion
+  int diff[3] = {kelvin-dispersion, kelvin, kelvin+dispersion};
+
+  for(int i=0 ;i<3; i++){
+    float temp = diff[i]/100;
+    if( temp <= 66 ){ 
+
+        red[i] = 255; 
+        
+        green[i] = temp;
+        green[i] = 99.4708025861 * log(green[i]) - 161.1195681661;
+
+        
+        if( temp <= 19){
+
+            blue[i] = 0;
+
+        } else {
+
+            blue[i] = temp-10;
+            blue[i] = 138.5177312231 * log(blue[i]) - 305.0447927307;
+
+        }
+
+    } else {
+
+        red[i] = temp - 60;
+        red[i] = 329.698727446 * pow(red[i], -0.1332047592);
+        
+        green[i] = temp - 60;
+        green[i] = 288.1221695283 * pow(green[i], -0.0755148492 );
+
+        blue[i] = 255;
+
+    }
+  }
+
+  //Assign the color to the leds
+  for (int o = 0; o < PIXEL_COUNT; o++) {
+    int i = random(0, 3);
+    strip.setPixelColor(o, (int) red[i] , (int) green[i], (int) blue[i]);
   }
   strip.show();
 }

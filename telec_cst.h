@@ -11,11 +11,13 @@
 #define IDual_plus 0x09
 
 #define IDual_candle 0x11
-#define IDual_light 0x8
+#define IDual_light 0x16
 #define IDual_sun 0x0A
 #define IDual_cold 0x03
+
 #define IDual_night 0x12
 #define IDual_zen 0x04
+#define IDual_reading 0x0B
 
 // telec IDual, comprenant toutes les touches + addr
 #define Keyes_addr 0xFF00
@@ -39,15 +41,6 @@
 #define Keyes_zeven 0x08
 #define Keyes_acht 0x1C
 #define Keyes_negen 0x5A
-
-//Les modes possibles pour le ruban
-#define M_candle 0x11
-#define M_light 0x8
-
-#define M_sun 0x0A
-#define M_cold 0x03
-#define M_night 0x12
-#define M_zen 0x04
 
 #define M_free_rgb 0
 
