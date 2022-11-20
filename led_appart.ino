@@ -29,19 +29,34 @@ struct { // Struct pour l'address et commande reçu
     uint8_t command;
 } telec_recu;
 
+struct { // Struct pour l'address et commande reçu pour le repeat
+    uint16_t address;
+    uint8_t command;
+} prev_telec_recu;
+
 void Telec_init(uint8_t rx_pin) {
     IrReceiver.begin(rx_pin); // Start the receiver
 }
 
 bool valid_data; // Bool to know if the data received is valid
+
 bool Telec_process(struct LedCommandStr *ptr) {
     valid_data = false;
-    if (IrReceiver.decode()) {                                                   // TODO: implement reapeat
+    if (IrReceiver.decode()) {
+
         telec_recu.address = (IrReceiver.decodedIRData.decodedRawData & 0xFFFF); // NEC: 00          2E        FF02
-        telec_recu.command =
-            (IrReceiver.decodedIRData.decodedRawData & 0xFF0000) >> 16; //      des trcus   commande  adresss
+        telec_recu.command = (IrReceiver.decodedIRData.decodedRawData & 0xFF0000) >> 16; //des trcus   commande  adresss
+
+        //If we have an unknown address and the flag is repeat then copy the previous addr and command
+        if(telec_recu.address==0 && (IrReceiver.decodedIRData.flags & (IRDATA_FLAGS_IS_AUTO_REPEAT | IRDATA_FLAGS_IS_REPEAT))){
+            telec_recu.address = prev_telec_recu.address;
+            telec_recu.command = prev_telec_recu.command;
+        }
 
         if (telec_recu.address == IDual_addr) {
+            prev_telec_recu.address = telec_recu.address;
+            prev_telec_recu.command = telec_recu.command;
+
             switch (telec_recu.command) {
             case IDual_on:
                 ptr->power = 1;
@@ -62,7 +77,10 @@ bool Telec_process(struct LedCommandStr *ptr) {
             }
             valid_data = true;
         } else if (telec_recu.address == Keyes_addr) {
-            Serial.println("Keyes"); // TODO
+            prev_telec_recu.address = telec_recu.address;
+            prev_telec_recu.command = telec_recu.command;
+
+            INFO_SERIAL.println("Keyes"); // TODO
 
             valid_data = true;
         }
@@ -75,7 +93,7 @@ bool Telec_process(struct LedCommandStr *ptr) {
 void loop() {
     // Decode entering data and send it to the queue
     if (Telec_process(&LedCommand)) {
-        INFO_SERIAL.println("Received valid data from IR remote! Sending to queue");
+        INFO_SERIAL.println(F("Received valid data from IR remote! Sending to queue"));
         xQueueSend(Command_queue, &LedCommand, portMAX_DELAY);
     }
 }
@@ -87,12 +105,13 @@ void setup() {
     pinMode(33, OUTPUT); //red Led pin
     pinMode(32, OUTPUT); //green Led pin
 
-     digitalWrite(33, HIGH);
-    Serial.begin(115200);
+    INFO_SERIAL.begin(115200);
 
     INFO_SERIAL.println(F("Initializing IR Module..."));
     Telec_init(25); // Init the IR module at pin 25
-    
+
+    INFO_SERIAL.println(F("Initializing leds strip..."));
+    Strip_init();   //Init the strip to all black
 
     INFO_SERIAL.println(F("Creating Queue"));
     Command_queue = xQueueCreate(1, sizeof(LedCommandStr)); // Create a "Queue" with only 1 possible value
@@ -113,7 +132,6 @@ void setup() {
                             0);            /* pin task to core 0 */
 
     INFO_SERIAL.println(F("Setup Done!"));
-    digitalWrite(33, LOW);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -129,12 +147,13 @@ void Leds_loop(void *parameter) {
         if (xQueueReceive(Command_queue, &LedCommand_recv, 1) == pdTRUE) {
             INFO_SERIAL.println(F("Received from queue"));
 
-            if (LedCommand_recv.power &&
-                !previous_state) { // If we have received a power on and the strip was off then light it
+            // If we have received a power on and the strip was off then light it
+            if (LedCommand_recv.power && !previous_state) { 
                 previous_state = true;
                 random_on(50);
             } else if (!LedCommand_recv.power && previous_state) {
                 previous_state = false;
+                LedCommand_recv = {0, 0, 0, 0, 0, 1};//Reset to default
                 random_off(50);
             }
         }
@@ -150,7 +169,7 @@ void Leds_loop(void *parameter) {
             case IDual_light:
                 if (previous_mode != IDual_light) {
                     previous_mode = IDual_light;
-                    setKelvin(3500, 500);
+                    setKelvin(3500, 700);
                 }
                 break;
             case IDual_sun:
@@ -162,10 +181,9 @@ void Leds_loop(void *parameter) {
             case IDual_cold:
                 if (previous_mode != IDual_cold) {
                     previous_mode = IDual_cold;
-                    setKelvin(10000, 2500);
+                    setKelvin(15000, 5000);
                 }
                 break;
-
             case IDual_night:
                 rainbow((int)(LedCommand_recv.brightness * 20) + 2);
                 break;

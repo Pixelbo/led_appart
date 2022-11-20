@@ -3,6 +3,12 @@
 //Declare the leds
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_RGB + NEO_KHZ800);
 
+void Strip_init(){
+  strip.begin();
+  strip.clear();
+  strip.show();
+}
+
 boolean arrayIncludeElement(int array[], int element) {
   if (array[element] == 1) {
     return true;
@@ -251,5 +257,6 @@ void setKelvin(int kelvin, int dispersion){
     int i = random(0, 3);
     strip.setPixelColor(o, (int) red[i] , (int) green[i], (int) blue[i]);
   }
+  
   strip.show();
 }

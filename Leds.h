@@ -14,6 +14,8 @@
 const uint8_t vague_r[VAGUE_LENGHT] = { 250, 200, 150, 0, 150, 200, 250 };
 
 //Leds function
+void Strip_init();
+
 boolean arrayIncludeElement(int array[], int element);
 
 void setBrightness(uint8_t brightness);
